@@ -230,6 +230,7 @@
 			);
 			mainGroup = 3ADED1AB2BA9710800493231;
 			packageReferences = (
+				3A9590AA2BB556CC007DF610 /* XCRemoteSwiftPackageReference "BitcoinKit" */,
 			);
 			productRefGroup = 3ADED1B52BA9710800493231 /* Products */;
 			projectDirPath = "";
@@ -616,6 +617,17 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		3A9590AA2BB556CC007DF610 /* XCRemoteSwiftPackageReference "BitcoinKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/iopay/BitcoinKit";
+			requirement = {
+				branch = master;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		3A6CC0542BA98F7D008F5B55 /* BitcoinKit */ = {
