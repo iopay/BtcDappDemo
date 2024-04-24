@@ -46,6 +46,7 @@
      constructor() {
          // channel = new BroadcastChannel("");
          this._waitingMap = new Map();
+         this._eventCallback = {};
          this._request = (data) => __awaiter(this, void 0, void 0, function* () {
              const id = utils_1.Utils.genId();
              return new Promise((resolve, reject) => {
@@ -93,6 +94,13 @@
              else {
                  console.log('no callback found for id', id);
              }
+         };
+         this.sendAccountChangeEvent = (accounts) => {
+             accounts = JSON.parse(accounts);
+             this._eventCallback['accountsChanged'].forEach(cb => cb(accounts));
+         };
+         this.sendNetworkChangeEvent = (network) => {
+             this._eventCallback['networkChanged'].forEach(cb => cb(network));
          };
          // public methods
          this.requestAccounts = () => __awaiter(this, void 0, void 0, function* () {
@@ -252,6 +260,15 @@
                  }
              });
          });
+         this.on = (event, cb) => {
+             if (!this._eventCallback[event]) {
+                 this._eventCallback[event] = [];
+             }
+             this._eventCallback[event].push(cb);
+         };
+         this.removeListener = (event, cb) => {
+             this._eventCallback[event] = this._eventCallback[event].filter(c => c !== cb);
+         };
          // this.channel.postMessage()
      }
  }

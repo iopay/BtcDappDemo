@@ -24,4 +24,18 @@ extension WKWebView {
             self.evaluateJavaScript(script)
         }
     }
+
+    public func sendAccountChanged(_ accounts: [String]) {
+        let script = String(format: "window.unisat.sendAccountChangeEvent('%@')", String(data: try! JSONEncoder().encode(accounts), encoding: .utf8)!)
+        DispatchQueue.main.async {
+            self.evaluateJavaScript(script)
+        }
+    }
+
+    public func sendNetworkChanged(_ network: String) {
+        let script = String(format: "window.unisat.sendNetworkChangeEvent('%@')", network)
+        DispatchQueue.main.async {
+            self.evaluateJavaScript(script)
+        }
+    }
 }

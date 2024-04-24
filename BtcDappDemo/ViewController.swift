@@ -15,6 +15,9 @@ class ViewController: UIViewController {
     let webView = WKWebView()
     let scriptConfig = BtcUserConfigScript()
 
+    /// livenet or testnet
+    var network = "testnet"
+
     override func viewDidLoad() {
         super.viewDidLoad()
         // Do any additional setup after loading the view.
@@ -31,7 +34,7 @@ class ViewController: UIViewController {
         webView.configuration.userContentController.addUserScript(scriptConfig.providerScript)
         webView.configuration.userContentController.addUserScript(scriptConfig.injectedScript)
         webView.configuration.userContentController.add(self, name: "_iopay_")
-        webView.load(URLRequest(url: URL(string: "http://localhost:3000")!))
+        webView.load(URLRequest(url: URL(string: "https://demo.unisat.io/")!))
     }
 
 }
@@ -63,14 +66,17 @@ extension ViewController: WKScriptMessageHandler {
             ]
             webView.sendResult(String(data: try! JSONEncoder().encode(res), encoding: .utf8)!, to: id)
         case "getNetwork":
-            webView.sendResult("testnet", to: id)
+            webView.sendResult(network, to: id)
         case "sendBitcoin":
             let sato = params!["satoshis"] as! UInt64
             let toAddress = params!["toAddress"] as! String
             // TODO: build transaction and sign and broadcast
             webView.sendResult("", to: id)
         case "switchNetwork":
-            ()
+            if let network = params?["network"] as? String {
+                self.network = network
+                webView.sendNetworkChanged(network)
+            }
         case "signMessage":
             let text = params!["text"] as! String
             let type = (params!["type"] as? String) ?? "ecdsa"
