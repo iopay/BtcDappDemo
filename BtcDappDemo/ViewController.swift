@@ -11,6 +11,11 @@ import BitcoinKit
 import CryptoSwift
 import secp256k1
 
+/// implement this func in your project
+func getPrivateKey(from pubkey: String) throws -> PrivateKey {
+    fatalError()
+}
+
 class ViewController: UIViewController {
     let webView = WKWebView()
     let scriptConfig = BtcUserConfigScript()
@@ -70,7 +75,7 @@ extension ViewController: WKScriptMessageHandler {
         case "sendBitcoin":
             let sato = params!["satoshis"] as! UInt64
             let toAddress = params!["toAddress"] as! String
-            // TODO: build transaction and sign and broadcast
+            // TODO: build psbt and sign and broadcast
             webView.sendResult("", to: id)
         case "switchNetwork":
             if let network = params?["network"] as? String {
@@ -93,25 +98,47 @@ extension ViewController: WKScriptMessageHandler {
                 }
             }
         case "signPsbt":
-            // TODO: sign options
-            let hex = params!["psbtHex"] as! String
+            guard let hex = params?["psbtHex"] as? String else {
+                webView.sendError("", to: id)
+                return
+            }
+            let options = (params?["options"] as? [String : Any]) ?? [:]
             do {
-                let tx = try Transaction.fromPsbtHex(hex)
-                let signer = TransactionSigner(transaction: tx, sighashHelper: BTCSignatureHashHelper(hashType: .ALL))
-                let signed = try signer.sign(with: [pk])
-                webView.sendResult(signed.serializedPsbtHex().hex, to: id)
+                let psbt = try Psbt.deserialize(hex)
+                let options = try formatOptionsToSignInputs(psbt: psbt, toSignInputs: (options["toSignInputs"] as? [[String : Any]]) ?? [])
+                let autoFinalized = (params?["autoFinalized"] as? Bool) ?? true
+                try options.forEach { opt in
+                    let pk = try getPrivateKey(from: opt.publicKey)
+                    if psbt.inputs[opt.index].isTaprootInput {
+                        try psbt.signInput(with: pk.tweaked, at: opt.index, sigHashTypes: opt.sighashTypes)
+                    } else {
+                        try psbt.signInput(with: pk, at: opt.index, sigHashTypes: opt.sighashTypes)
+                    }
+                }
+                if autoFinalized {
+                    try options.forEach { opt in
+                        try psbt.finalizeInput(index: opt.index)
+                    }
+                }
+                webView.sendResult(psbt.serialized().hex, to: id)
             } catch {
                 webView.sendError(error.localizedDescription, to: id)
             }
         case "signPsbts":
-            // TODO: sign multi psbt
-            webView.sendError("method not supported", to: id)
+            guard let psbtHexs = params?["psbtHexs"] as? [String] else {
+                return
+            }
+            for (idx, hex) in psbtHexs.enumerated() {
+                let options = (params?["options"] as? [[String: Any]]) ?? []
+                let option = idx < options.count ? options[idx] : nil
+                /// sign single psbt and return signed hex as string array
+            }
         case "pushPsbt":
             let hex = params!["psbtHex"] as! String
             Task {
                 do {
-                    let tx = try Transaction.fromPsbtHex(hex)
-                    let res = try await broadcast(tx.serialized().hex)
+                    let psbt = try Psbt.deserialize(hex)
+                    let res = try await broadcast(psbt.extractTransaction().serialized().hex)
                     webView.sendResult(res, to: id)
                 } catch {
                     webView.sendError(error.localizedDescription, to: id)
@@ -142,3 +169,71 @@ func broadcast(_ tx: String) async throws -> String {
     let (data, _) = try await URLSession.shared.data(for: request)
     return String(data: data, encoding: .utf8)!
 }
+
+func formatOptionsToSignInputs(psbt: Psbt, toSignInputs: [[String: Any]]?) throws -> [UserToSignInput] {
+    let currentAddress = ""
+    let currentPublicKey = ""
+
+    if let toSignInputs {
+        return try toSignInputs.map { obj in
+            guard let index = obj["index"] as? Int else {
+                throw ""
+            }
+            let address = obj["address"] as? String
+            let publicKey = obj["publicKey"] as? String
+            if address == nil && publicKey == nil {
+                throw ""
+            }
+            if let address, address != currentAddress {
+                throw ""
+            }
+            if let publicKey, publicKey != currentPublicKey {
+                throw ""
+            }
+            let sighashType = (obj["sighashTypes"] as? [UInt8])?.map { BTCSighashType.init(rawValue: $0) }
+
+            return UserToSignInput(
+                index: index,
+                publicKey: currentPublicKey,
+                sighashTypes: sighashType,
+                disableTweakSigner: obj["disableTweakSigner"] as? Bool
+            )
+        }
+    } else {
+        return try psbt.inputs.enumerated().compactMap { index, input in
+            let (script, _) = try psbt.getScriptAndAmountFromUtxo(input: input, index: index)
+            let isSigned = input.finalScriptSig != nil || input.finalScriptWitness != nil
+            if !isSigned {
+                /// FIX: use real world network
+                let address = try createAddress(from: script, network: .mainnetBTC)
+                let sighashTypes: [BTCSighashType]? = if let type = input.sighashType {
+                    [BTCSighashType(rawValue: type)]
+                } else {
+                    nil
+                }
+                if address.address == currentAddress {
+                    return UserToSignInput(
+                        index: index,
+                        publicKey: currentPublicKey,
+                        sighashTypes: sighashTypes,
+                        disableTweakSigner: nil
+                    )
+                } else {
+                    return nil
+                }
+            } else {
+                return nil
+            }
+        }
+    }
+}
+
+struct UserToSignInput {
+    let index: Int
+    let publicKey: String
+    let sighashTypes: [BTCSighashType]?
+    let disableTweakSigner: Bool?
+}
+
+/// dont use this
+extension String: Error {}
