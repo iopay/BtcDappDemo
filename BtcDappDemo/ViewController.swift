@@ -75,8 +75,17 @@ extension ViewController: WKScriptMessageHandler {
         case "sendBitcoin":
             let sato = params!["satoshis"] as! UInt64
             let toAddress = params!["toAddress"] as! String
-            // TODO: build psbt and sign and broadcast
-            webView.sendResult("", to: id)
+
+            Task {
+                do {
+                    let (psbt, userSignInputs) = try PsbtBuilder.build([], to: [createAddress(from: toAddress)], toAmount: [sato], change: pk.publicKey().legacy(), feeRate: 1)
+                    try pk.sign(psbt, options: userSignInputs)
+                    let txid = try await broadcast(psbt.extractTransaction().serialized().hex)
+                    webView.sendResult(txid, to: id)
+                } catch {
+
+                }
+            }
         case "switchNetwork":
             if let network = params?["network"] as? String {
                 self.network = network
@@ -107,19 +116,8 @@ extension ViewController: WKScriptMessageHandler {
                 let psbt = try Psbt.deserialize(hex)
                 let options = try formatOptionsToSignInputs(psbt: psbt, toSignInputs: (options["toSignInputs"] as? [[String : Any]]) ?? [])
                 let autoFinalized = (params?["autoFinalized"] as? Bool) ?? true
-                try options.forEach { opt in
-                    let pk = try getPrivateKey(from: opt.publicKey)
-                    if psbt.inputs[opt.index].isTaprootInput {
-                        try psbt.signInput(with: pk.tweaked, at: opt.index, sigHashTypes: opt.sighashTypes)
-                    } else {
-                        try psbt.signInput(with: pk, at: opt.index, sigHashTypes: opt.sighashTypes)
-                    }
-                }
-                if autoFinalized {
-                    try options.forEach { opt in
-                        try psbt.finalizeInput(index: opt.index)
-                    }
-                }
+                try pk.sign(psbt, options: options, autoFinalized: autoFinalized)
+
                 webView.sendResult(psbt.serialized().hex, to: id)
             } catch {
                 webView.sendError(error.localizedDescription, to: id)
@@ -228,12 +226,12 @@ func formatOptionsToSignInputs(psbt: Psbt, toSignInputs: [[String: Any]]?) throw
     }
 }
 
-struct UserToSignInput {
-    let index: Int
-    let publicKey: String
-    let sighashTypes: [BTCSighashType]?
-    let disableTweakSigner: Bool?
-}
+//struct UserToSignInput {
+//    let index: Int
+//    let publicKey: String
+//    let sighashTypes: [BTCSighashType]?
+//    let disableTweakSigner: Bool?
+//}
 
 /// dont use this
 extension String: Error {}
